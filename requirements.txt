@@ -11,3 +11,8 @@ mss
 uiautomation
 psutil
 pywin32
+
+# HUD UI (Qt) and optional telemetry
+PySide6
+GPUtil
+winsdk; sys_platform == 'win32'
