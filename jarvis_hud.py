@@ -1,6 +1,13 @@
-import os, sys, time, math, threading, queue, argparse, subprocess, shutil
+import argparse
+import math
+import os
+import queue
+import sys
+import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
+
 import requests
 
 # ========= Optional deps presence ========
@@ -30,8 +37,11 @@ except Exception:
 
 # ========= Qt / Web server =========
 from PySide6 import QtCore, QtGui, QtWidgets
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from waitress import serve
+
+HUD_HOST = os.getenv("JARVIS_HUD_HOST", "127.0.0.1")
+HUD_PORT = int(os.getenv("JARVIS_HUD_PORT", "8765"))
 
 # Quiet Qt logging
 os.environ.setdefault("QT_LOGGING_RULES", "*=false")
@@ -76,7 +86,7 @@ def _event():
 
 def run_server():
     try:
-        serve(flask_app, host="127.0.0.1", port=8765, threads=4)
+        serve(flask_app, host=HUD_HOST, port=HUD_PORT, threads=4)
     except Exception as e:
         EVENT_Q.put(HudEvent("system", text=f"server error: {e}"))
 
@@ -221,7 +231,7 @@ class Pill(QtWidgets.QFrame):
         v = QtWidgets.QVBoxLayout(self)
         v.setContentsMargins(12, 8, 12, 10); v.setSpacing(4)
         self.title = QtWidgets.QLabel(title); self.title.setProperty("role", "title")
-        self.value = QtWidgets.QLabel("—");    self.value.setProperty("role", "value")
+        self.value = QtWidgets.QLabel("-");    self.value.setProperty("role", "value")
         v.addWidget(self.title); v.addWidget(self.value)
 
     def set_text(self, s: str):
@@ -231,7 +241,7 @@ class Pill(QtWidgets.QFrame):
 class ClockPill(Pill):
     def __init__(self): super().__init__("TIME")
     def refresh(self):
-        self.set_text(QtCore.QDateTime.currentDateTime().toString("ddd, MMM d  •  hh:mm AP"))
+        self.set_text(QtCore.QDateTime.currentDateTime().toString("ddd, MMM d | hh:mm AP"))
 
 class CpuPill(Pill):
     def __init__(self): super().__init__("CPU")
@@ -251,7 +261,7 @@ class CpuPill(Pill):
                             break
             txt = f"{usage:.0f}%"
             if temps is not None:
-                txt += f"  •  {temps:.0f}°C"
+                txt += f"  |  {temps:.0f} degC"
             self.set_text(txt)
             self.setVisible(True)
         except Exception:
@@ -273,8 +283,8 @@ class GpuPill(Pill):
             mem   = f"{g.memoryUsed:.0f}/{g.memoryTotal:.0f}MB"
             txt = f"{usage:.0f}%"
             if temp is not None:
-                txt += f"  •  {temp:.0f}°C"
-            txt += f"  •  {mem}"
+                txt += f"  |  {temp:.0f} degC"
+            txt += f"  |  {mem}"
             self.set_text(txt); self.setVisible(True)
         except Exception:
             self.setVisible(False)
@@ -293,12 +303,12 @@ class NetPill(Pill):
             t = time.time()
             if self._prev is None:
                 self._prev = now; self._prev_t = t
-                self.set_text("—"); self.setVisible(True); return
+                self.set_text("-"); self.setVisible(True); return
             dt = t - self._prev_t
             up = bytes_per_sec(self._prev.bytes_sent, now.bytes_sent, dt)
             down = bytes_per_sec(self._prev.bytes_recv, now.bytes_recv, dt)
             self._prev, self._prev_t = now, t
-            self.set_text(f"↑ {format_rate(up)}   •   ↓ {format_rate(down)}")
+            self.set_text(f"Up {format_rate(up)}   |   Down {format_rate(down)}")
             self.setVisible(True)
         except Exception:
             self.setVisible(False)
@@ -320,7 +330,7 @@ class SpotifyPill(Pill):
                     artist = info.artist or ""
                     track = info.title or ""
                     if track:
-                        title = f"{track} — {artist}" if artist else track
+                        title = f"{track} - {artist}" if artist else track
             except Exception:
                 pass
         if title != self._last:
@@ -485,7 +495,7 @@ class JarvisHUD(QtWidgets.QMainWindow):
 
         self._inputEdit = QtWidgets.QLineEdit()
         self._inputEdit.setObjectName("JarvisInput")
-        self._inputEdit.setPlaceholderText("Type to Jarvis…  (Enter to send)")
+        self._inputEdit.setPlaceholderText("Type to Jarvis...  (Enter to send)")
         self._sendBtn = QtWidgets.QPushButton("Send")
         self._sendBtn.setObjectName("SendBtn")
 
@@ -505,7 +515,6 @@ class JarvisHUD(QtWidgets.QMainWindow):
         v.addWidget(self._inputBar, 0)
 
         self.setCentralWidget(container)
-        self.setCentralWidget(self.stack)
 
         # Start in startup mode
         self.set_mode("startup")
@@ -607,7 +616,7 @@ class JarvisHUD(QtWidgets.QMainWindow):
     def _flash_assistant(self, text: str):
         # briefly swap center label to the first 24 chars
         label = (text or "JARVIS").strip()
-        label = (label[:24] + "…") if len(label) > 24 else label
+        label = (label[:24] + "...") if len(label) > 24 else label
         for screen in (self.home, self.dashboard):
             screen.reactor.setLabel(label)
         QtCore.QTimer.singleShot(1200, lambda: [self.home.reactor.setLabel("JARVIS"),
