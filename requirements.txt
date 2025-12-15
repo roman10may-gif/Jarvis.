@@ -1,0 +1,13 @@
+# Core web/LLM plumbing
+Flask
+waitress
+requests
+duckduckgo-search
+
+# Vision / screen capture
+Pillow
+pytesseract
+mss
+uiautomation
+psutil
+pywin32
